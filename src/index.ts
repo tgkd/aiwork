@@ -1,15 +1,19 @@
 import { Hono } from 'hono';
 import { basicAuth } from 'hono/basic-auth';
 import { HTTPException } from 'hono/http-exception';
+import { stream } from 'hono/streaming';
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
-const JP_BASE_PROMPT = `
+const MAX_TOKENS = 512;
+
+const ASK_PROMPT = `
 Generate 3-5 Japanese-English sentences pairs using the specific word/topic provided by the user.
-Schema of pair:
-{jp: "Japanese sentence", en: "English sentence", expl: "Explanation of the sentence pair"}
-Each pair must:
+Each sentence pair must follow the schema: {jp: "Japanese sentence", en: "English sentence", jp_reading: "Japanese sentence reading in hiragana"}
+The user's input will be in the following format: [word]::[reading]::[meaning;meaning;...]
+Respect maximum token limit: ${MAX_TOKENS} tokens
+**Requirements for Each Sentence Pair:**
 1. Include the exact user-provided word/topic at least once
 2. Have furigana annotations for ALL kanji characters in the format: kanji[furigana]
 3. Be grammatically correct and natural-sounding
@@ -17,12 +21,21 @@ Each pair must:
 5. Be relevant to the user-provided word/topic
 6. If there are multiple possible translations, provide the most common one
 7. If there are multiple possible readings for a kanji, provide the most common one
-8. If there is explanatory text, provide it in English only
+This revised prompt provides a clear, structured framework to generate high-quality, accurate Japanese-English sentence pairs.
 `;
 
-const CF_JP_BASE_PROMPT = JP_BASE_PROMPT.concat(`
-  USER-PROVIDED WORD/TOPIC: {{prompt}}
-`);
+const EXPLAIN_PROMPT = `
+# Japanese Language Expert
+As a Japanese language expert, provide concise explanations for Japanese words/phrases including:
+1. **Word Information:** Japanese writing (in UTF-8 encoding), reading/pronunciation with furigana, word type
+2. **Meaning:** Primary and secondary translations, similar terms and differences
+3. **Usage:** Common contexts, formality level, frequency of use
+4. **Cultural Context:** Nuances, implications, relevant background
+5. **Examples:** 1-2 example sentences with translations showing proper usage
+6. **Quick Tips:** Common mistakes, memory aids (if helpful)
+Format with clear headings, proper furigana for kanji, and concise explanations.
+USER-PROVIDED WORD/TOPIC: {{prompt}}
+`;
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -38,8 +51,8 @@ const dictSchema = z.object({
   sentences: z.array(
     z.object({
       jp: z.string(),
+      jp_reading: z.string(),
       en: z.string(),
-      expl: z.string().optional(),
     })
   ),
 });
@@ -55,11 +68,12 @@ app.get('/ask/open', async (c) => {
 
   const resp = await openai.beta.chat.completions.parse({
     messages: [
-      { role: 'system', content: JP_BASE_PROMPT },
+      { role: 'system', content: ASK_PROMPT },
       { role: 'user', content: prompt },
     ],
     model: 'gpt-4o-mini-2024-07-18',
     response_format: zodResponseFormat(dictSchema, 'dict'),
+    max_tokens: MAX_TOKENS,
   });
 
   if (resp.choices.length && resp.choices[0].message.parsed?.sentences.length) {
@@ -67,6 +81,32 @@ app.get('/ask/open', async (c) => {
   }
 
   throw new HTTPException(500, { message: 'Failed to generate sentences' });
+});
+
+app.get('/explain/open', async (c) => {
+  const prompt = c.req.query('prompt');
+
+  if (!prompt) {
+    throw new HTTPException(400, { message: 'Missing prompt' });
+  }
+
+  const openai = new OpenAI({ apiKey: c.env.OPENAI_KEY });
+
+  const resp = await openai.completions.create({
+    prompt: EXPLAIN_PROMPT.replace('{{prompt}}', prompt),
+    model: 'gpt-4o-mini-2024-07-18',
+    max_tokens: MAX_TOKENS,
+    stream: true,
+  });
+
+  c.header('Content-Encoding', 'Identity');
+  const streamResp = resp.toReadableStream();
+
+  return stream(c, async (stream) => {
+    for await (const chunk of streamResp) {
+      await stream.write(JSON.stringify(chunk.choices[0]?.delta.content ?? ''));
+    }
+  });
 });
 
 app.get('/ask/cf', async (c) => {
@@ -77,8 +117,11 @@ app.get('/ask/cf', async (c) => {
   }
 
   const resp = await c.env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-    prompt: CF_JP_BASE_PROMPT.replace('{{prompt}}', prompt),
-    max_tokens: 100,
+    messages: [
+      { role: 'system', content: ASK_PROMPT },
+      { role: 'user', content: prompt },
+    ],
+    max_tokens: MAX_TOKENS,
     temperature: 0,
     stream: false,
     response_format: {
@@ -86,17 +129,20 @@ app.get('/ask/cf', async (c) => {
       json_schema: {
         type: 'object',
         properties: {
-          jp_sentences: {
+          sentences: {
             type: 'array',
-            items: { type: 'string' },
+            items: {
+              type: 'object',
+              properties: {
+                jp: { type: 'string' },
+                jp_reading: { type: 'string' },
+                en: { type: 'string' },
+              },
+              required: ['jp', 'jp_reading', 'en'],
+            },
           },
-          en_sentences: {
-            type: 'array',
-            items: { type: 'string' },
-          },
-          explanations: { type: 'string', nullable: true },
         },
-        required: ['jp_sentences', 'en_sentences'],
+        required: ['sentences'],
       },
     },
   });

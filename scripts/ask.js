@@ -4,9 +4,9 @@ const fs = require('fs');
 const path = require('path');
 
 /*
-Use Cloudflare AI: node [ask.js] --cf "your prompt here"
-Use OpenAI: node [ask.js] --open "your prompt here"
-Default (Cloudflare): node [ask.js] "your prompt here"
+Use Cloudflare AI: yarn run ask --cf "your prompt here"
+Use OpenAI: yarn run ask --open "言葉::kotoba::word;language"
+Default (Cloudflare): yarn run ask "your prompt here"
  */
 const loadDevVars = () => {
   try {
