@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { basicAuth } from 'hono/basic-auth';
 import { HTTPException } from 'hono/http-exception';
-import { stream } from 'hono/streaming';
+import { streamText } from 'hono/streaming';
+import { cors } from 'hono/cors';
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
@@ -9,6 +10,7 @@ import { z } from 'zod';
 const MAX_TOKENS = 512;
 
 const ASK_PROMPT = `
+# Japanese Language Expert
 Generate 3-5 Japanese-English sentences pairs using the specific word/topic provided by the user.
 Each sentence pair must follow the schema: {jp: "Japanese sentence", en: "English sentence", jp_reading: "Japanese sentence reading in hiragana"}
 The user's input will be in the following format: [word]::[reading]::[meaning;meaning;...]
@@ -33,11 +35,19 @@ As a Japanese language expert, provide concise explanations for Japanese words/p
 4. **Cultural Context:** Nuances, implications, relevant background
 5. **Examples:** 1-2 example sentences with translations showing proper usage
 6. **Quick Tips:** Common mistakes, memory aids (if helpful)
+7. **respect maximum token limit:** ${MAX_TOKENS} tokens
 Format with clear headings, proper furigana for kanji, and concise explanations.
-USER-PROVIDED WORD/TOPIC: {{prompt}}
 `;
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
+
+app.use(
+  cors({
+    origin: '*',
+    allowHeaders: ['Authorization', 'Content-Type', 'Accept'],
+    allowMethods: ['GET', 'OPTIONS'],
+  })
+);
 
 app.use(
   basicAuth({
@@ -89,23 +99,34 @@ app.get('/explain/open', async (c) => {
   if (!prompt) {
     throw new HTTPException(400, { message: 'Missing prompt' });
   }
-
   const openai = new OpenAI({ apiKey: c.env.OPENAI_KEY });
 
-  const resp = await openai.completions.create({
-    prompt: EXPLAIN_PROMPT.replace('{{prompt}}', prompt),
+  const streamResp = await openai.chat.completions.create({
+    messages: [
+      { role: 'system', content: EXPLAIN_PROMPT },
+      { role: 'user', content: prompt },
+    ],
     model: 'gpt-4o-mini-2024-07-18',
     max_tokens: MAX_TOKENS,
     stream: true,
   });
 
-  c.header('Content-Encoding', 'Identity');
-  const streamResp = resp.toReadableStream();
+  c.header('Content-Type', 'text/plain; charset=utf-8');
+  c.header('Transfer-Encoding', 'chunked');
+  c.header('Cache-Control', 'no-cache');
+  c.header('Connection', 'keep-alive');
 
-  return stream(c, async (stream) => {
-    for await (const chunk of streamResp) {
-      await stream.write(JSON.stringify(chunk.choices[0]?.delta.content ?? ''));
+  return streamText(c, async (stream) => {
+    for await (const message of streamResp) {
+      const text = message.choices[0]?.delta.content ?? '';
+      await Promise.all(
+        Array.from(text).map(async (s) => {
+          await stream.write(s);
+          await stream.sleep(20);
+        })
+      );
     }
+    stream.close();
   });
 });
 
