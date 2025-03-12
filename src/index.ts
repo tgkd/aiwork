@@ -26,17 +26,65 @@ Respect maximum token limit: ${MAX_TOKENS} tokens
 This revised prompt provides a clear, structured framework to generate high-quality, accurate Japanese-English sentence pairs.
 `;
 
-const EXPLAIN_PROMPT = `
-# Japanese Language Expert
-As a Japanese language expert, provide concise explanations for Japanese words/phrases including:
-1. **Word Information:** Japanese writing (in UTF-8 encoding), reading/pronunciation with furigana, word type
-2. **Meaning:** Primary and secondary translations, similar terms and differences
-3. **Usage:** Common contexts, formality level, frequency of use
-4. **Cultural Context:** Nuances, implications, relevant background
-5. **Examples:** 1-2 example sentences with translations showing proper usage
+const EXPLAIN_PROMPT = `# Japanese Language Expert Prompt
+As a Japanese language expert, provide concise explanations including:
+1. **Word Info:** Japanese writing, pronunciation with furigana, word type
+2. **Meaning:** Primary/secondary translations, similar terms and differences
+3. **Usage:** Common contexts, formality level, frequency
+4. **Cultural Context:** Nuances, implications, background
+5. **Examples:** 1-2 example sentences with translations
 6. **Quick Tips:** Common mistakes, memory aids (if helpful)
-7. **respect maximum token limit:** ${MAX_TOKENS} tokens
-Format with clear headings, proper furigana for kanji, and concise explanations.
+
+## For Single Words:
+
+**TL;DR**: **[Word (ふりがな, romaji)]** means **"[translation],"** specifically referring to **[specific meaning].**
+
+### 1. Kanji Breakdown
+- **[Kanji 1 (ふりがな, romaji)]** → "[meaning]"
+- **[Kanji 2 (ふりがな, romaji)]** → "[meaning]"
+  Together, **[full word (ふりがな, romaji)]** means **"[meaning],"** often implying **[nuance].**
+
+### 2. Common Usages & Example Sentences
+#### A. [Usage Category]
+- **Example Sentences:**
+  - **[Japanese sentence]**
+    *([ふりがな], [romaji])*
+    → "[English translation]"
+
+### 3. Differences Between Similar Words
+| **Word** | **Reading** | **Meaning** | **Usage** |
+|----------|------------|-------------|------------|
+| **[Word 1]** | "[Reading]" | [Meaning] | [Usage context] |
+| **[Word 2]** | "[Reading]" | [Meaning] | [Usage context] |
+
+### 4. Summary & When to Use
+**Use [word] when [specific usage guidance]**
+
+## For Phrases:
+
+**TL;DR**: **[Phrase]** means **"[translation]."** This sentence [brief explanation of structure/function].
+
+### 1. Sentence Breakdown
+- **[Phrase component 1]**
+  - **[Word (ふりがな, romaji)]** → "[meaning]"
+  - **Combined**, this segment [functional explanation]
+
+### 2. Common Usages & Example Sentences
+#### A. [Usage Category]
+- **Example Sentence:**
+  - **[Japanese sentence]**
+    *([ふりがな], [romaji])*
+    → "[English translation]"
+
+### 3. Differences Between Similar Constructions
+| **Construction** | **Meaning** | **Usage** |
+|-----------------|------------|------------|
+| **[Construction 1]** | [Meaning] | [Usage context] |
+| **[Construction 2]** | [Meaning] | [Usage context] |
+
+### 4. Summary & When to Use
+- **[Construction Pattern]:**
+  Use the structure **"[pattern]"** to [explanation of when/how to use]
 `;
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -78,7 +126,7 @@ app.get('/ask/open', async (c) => {
 
   const resp = await openai.beta.chat.completions.parse({
     messages: [
-      { role: 'system', content: ASK_PROMPT },
+      { role: 'developer', content: ASK_PROMPT },
       { role: 'user', content: prompt },
     ],
     model: 'gpt-4o-mini-2024-07-18',
@@ -103,7 +151,7 @@ app.get('/explain/open', async (c) => {
 
   const streamResp = await openai.chat.completions.create({
     messages: [
-      { role: 'system', content: EXPLAIN_PROMPT },
+      { role: 'developer', content: EXPLAIN_PROMPT },
       { role: 'user', content: prompt },
     ],
     model: 'gpt-4o-mini-2024-07-18',

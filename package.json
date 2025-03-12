@@ -18,7 +18,7 @@
   "packageManager": "yarn@1.22.19+sha1.4ba7fc5c6e704fce2066ecbfb0b0d8976fe62447",
   "dependencies": {
     "hono": "4.7.4",
-    "openai": "4.86.2",
+    "openai": "4.87.3",
     "zod": "3.24.2"
   }
 }
