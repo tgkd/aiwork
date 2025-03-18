@@ -7,13 +7,14 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
-    "ask": "node scripts/ask.js"
+    "ask": "node scripts/ask.js",
+    "sound": "node scripts/sound.js"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.7.5",
     "@cloudflare/workers-types": "^4.20250303.0",
     "typescript": "^5.5.2",
-    "wrangler": "^3.114.0"
+    "wrangler": "^4.1.0"
   },
   "packageManager": "yarn@1.22.19+sha1.4ba7fc5c6e704fce2066ecbfb0b0d8976fe62447",
   "dependencies": {

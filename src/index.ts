@@ -32,19 +32,17 @@ As a Japanese language expert, provide concise explanations including:
 2. **Meaning:** Primary/secondary translations, similar terms and differences
 3. **Usage:** Common contexts, formality level, frequency
 4. **Cultural Context:** Nuances, implications, background
-5. **Examples:** 1-2 example sentences with translations
-6. **Quick Tips:** Common mistakes, memory aids (if helpful)
 
-## For Single Words:
+For Single Words Explnations use the following format:
 
-**TL;DR**: **[Word (ふりがな, romaji)]** means **"[translation],"** specifically referring to **[specific meaning].**
+**[Word (ふりがな, romaji)]** means **"[translation],"** specifically referring to **[specific meaning].**
 
 ### 1. Kanji Breakdown
 - **[Kanji 1 (ふりがな, romaji)]** → "[meaning]"
 - **[Kanji 2 (ふりがな, romaji)]** → "[meaning]"
   Together, **[full word (ふりがな, romaji)]** means **"[meaning],"** often implying **[nuance].**
 
-### 2. Common Usages & Example Sentences
+### 2. Examples
 #### A. [Usage Category]
 - **Example Sentences:**
   - **[Japanese sentence]**
@@ -52,37 +50,45 @@ As a Japanese language expert, provide concise explanations including:
     → "[English translation]"
 
 ### 3. Differences Between Similar Words
-| **Word** | **Reading** | **Meaning** | **Usage** |
-|----------|------------|-------------|------------|
-| **[Word 1]** | "[Reading]" | [Meaning] | [Usage context] |
-| **[Word 2]** | "[Reading]" | [Meaning] | [Usage context] |
+**[Word 1]**
+  [Reading]
+  [Meaning]
+  [Usage context]
 
-### 4. Summary & When to Use
+**[Word 2]**
+  [Reading]
+  [Meaning]
+  [Usage context]
+
+### 4. Summary
 **Use [word] when [specific usage guidance]**
 
-## For Phrases:
 
-**TL;DR**: **[Phrase]** means **"[translation]."** This sentence [brief explanation of structure/function].
+For Phrases and Sentence Structures use the following format:
+
+**[Phrase]** means **"[translation]."** This sentence [brief explanation of structure/function].
 
 ### 1. Sentence Breakdown
 - **[Phrase component 1]**
   - **[Word (ふりがな, romaji)]** → "[meaning]"
   - **Combined**, this segment [functional explanation]
 
-### 2. Common Usages & Example Sentences
+### 2. Examples
 #### A. [Usage Category]
 - **Example Sentence:**
   - **[Japanese sentence]**
     *([ふりがな], [romaji])*
     → "[English translation]"
 
-### 3. Differences Between Similar Constructions
-| **Construction** | **Meaning** | **Usage** |
-|-----------------|------------|------------|
-| **[Construction 1]** | [Meaning] | [Usage context] |
-| **[Construction 2]** | [Meaning] | [Usage context] |
+### 3. Similar Constructions
+**[Construction 1]**
+  [Meaning]
+  [Usage context]
+**[Construction 2]**
+  [Meaning]
+  [Usage context]
 
-### 4. Summary & When to Use
+### 4. Summary
 - **[Construction Pattern]:**
   Use the structure **"[pattern]"** to [explanation of when/how to use]
 `;
@@ -176,6 +182,37 @@ app.get('/explain/open', async (c) => {
     }
     stream.close();
   });
+});
+
+app.get('/sound/open', async (c) => {
+  const prompt = c.req.query('prompt');
+  const voice = c.req.query('voice') || 'alloy';
+  const model = c.req.query('model') || 'tts-1';
+
+  if (!prompt) {
+    throw new HTTPException(400, { message: 'Missing prompt' });
+  }
+
+  const openai = new OpenAI({ apiKey: c.env.OPENAI_KEY });
+
+  try {
+    const response = await openai.audio.speech.create({
+      model: model,
+      voice: voice,
+      input: prompt,
+    });
+
+    const audioData = await response.arrayBuffer();
+
+    c.header('Content-Type', 'audio/mpeg');
+    c.header('Content-Length', audioData.byteLength.toString());
+    c.header('Cache-Control', 'no-cache');
+
+    return c.body(audioData);
+  } catch (error) {
+    console.error('Error generating speech:', error);
+    throw new HTTPException(500, { message: 'Failed to generate speech' });
+  }
 });
 
 app.get('/ask/cf', async (c) => {
