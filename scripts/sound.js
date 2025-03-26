@@ -34,8 +34,8 @@ const USERNAME = process.env.AUTH_USERNAME || devVars.AUTH_USERNAME || 'USERNAME
 const PASSWORD = process.env.AUTH_PASSWORD || devVars.AUTH_PASSWORD || 'PASSWORD';
 const hostname = process.env.BASE_URL || devVars.BASE_URL || 'localhost:3000';
 
-let voice = 'alloy';
-let model = 'tts-1';
+let voice = 'nova';
+let model = 'gpt-4o-mini-tts';
 let args = process.argv.slice(2);
 
 // Parse command line arguments

@@ -6,6 +6,7 @@ import { cors } from 'hono/cors';
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
+import { SpeechCreateParams } from 'openai/resources/audio/speech.mjs';
 
 const MAX_TOKENS = 512;
 
@@ -26,72 +27,123 @@ Respect maximum token limit: ${MAX_TOKENS} tokens
 This revised prompt provides a clear, structured framework to generate high-quality, accurate Japanese-English sentence pairs.
 `;
 
-const EXPLAIN_PROMPT = `# Japanese Language Expert Prompt
-As a Japanese language expert, provide concise explanations including:
-1. **Word Info:** Japanese writing, pronunciation with furigana, word type
-2. **Meaning:** Primary/secondary translations, similar terms and differences
-3. **Usage:** Common contexts, formality level, frequency
-4. **Cultural Context:** Nuances, implications, background
+const EXPLAIN_GRAMMAR = `
+**[Pattern/Phrase]** means **"[translation]"** and functions to [grammatical role/purpose].
 
-For Single Words Explnations use the following format:
+### Structure Analysis
+- **[Component 1]**: [function explanation]
+- **[Component 2]**: [function explanation]
+- **Pattern formula:** [X + Y + Z pattern notation]
 
-**[Word (ふりがな, romaji)]** means **"[translation],"** specifically referring to **[specific meaning].**
-
-### 1. Kanji Breakdown
-- **[Kanji 1 (ふりがな, romaji)]** → "[meaning]"
-- **[Kanji 2 (ふりがな, romaji)]** → "[meaning]"
-  Together, **[full word (ふりがな, romaji)]** means **"[meaning],"** often implying **[nuance].**
-
-### 2. Examples
-#### A. [Usage Category]
-- **Example Sentences:**
+### Usage Examples
+- **Basic usage:**
   - **[Japanese sentence]**
     *([ふりがな], [romaji])*
     → "[English translation]"
 
-### 3. Differences Between Similar Words
-**[Word 1]**
-  [Reading]
-  [Meaning]
-  [Usage context]
-
-**[Word 2]**
-  [Reading]
-  [Meaning]
-  [Usage context]
-
-### 4. Summary
-**Use [word] when [specific usage guidance]**
-
-
-For Phrases and Sentence Structures use the following format:
-
-**[Phrase]** means **"[translation]."** This sentence [brief explanation of structure/function].
-
-### 1. Sentence Breakdown
-- **[Phrase component 1]**
-  - **[Word (ふりがな, romaji)]** → "[meaning]"
-  - **Combined**, this segment [functional explanation]
-
-### 2. Examples
-#### A. [Usage Category]
-- **Example Sentence:**
+- **Variation:**
   - **[Japanese sentence]**
     *([ふりがな], [romaji])*
     → "[English translation]"
 
-### 3. Similar Constructions
-**[Construction 1]**
-  [Meaning]
-  [Usage context]
-**[Construction 2]**
-  [Meaning]
-  [Usage context]
+### Related Constructions
+**[Related Pattern 1]**
+- Meaning: [meaning]
+- When to use: [context]
+- Difference: [how it differs from main pattern]
 
-### 4. Summary
-- **[Construction Pattern]:**
-  Use the structure **"[pattern]"** to [explanation of when/how to use]
+**[Related Pattern 2]**
+- Meaning: [meaning]
+- When to use: [context]
+- Difference: [how it differs from main pattern]
+
+### Usage Rules
+- **Correct structure:** [specific syntactic requirements]
+- **Common mistakes:** [errors to avoid]
+- **Register awareness:** [formality considerations]
 `;
+
+const generateWordExplanationPrompt = (prompt: string) => {
+  // Check if the prompt contains kanji characters
+  const containsKanji = /[\u4e00-\u9faf]/.test(prompt);
+
+  let basePrompt = `
+**[Word (ふりがな, romaji)]** - *[part of speech]*
+Means **"[primary translation]"** or **"[secondary translation],"** specifically referring to **[precise meaning]**.`;
+
+  // Add kanji analysis section if the word contains kanji
+  if (containsKanji) {
+    basePrompt += `
+
+### Kanji Analysis
+For each kanji in the word:
+- **[Kanji 1 (ふりがな, romaji)]** → Strokes: [number], JLPT: [level]
+  - **Readings**: On: [on'yomi], Kun: [kun'yomi]
+  - **Core meaning:** "[core meaning]"
+
+- **[Kanji 2 (ふりがな, romaji)]** → Strokes: [number], JLPT: [level]
+  - **Readings**: On: [on'yomi], Kun: [kun'yomi]
+  - **Core meaning:** "[core meaning]"
+
+**Combined meaning:** "[compound meaning]" with nuance of **[specific connotation]**`;
+  }
+
+  // Add usage examples
+  basePrompt += `
+
+### Usage Examples
+- **Casual context:**
+  - **[Japanese sentence]**
+    *([ふりがな], [romaji])*
+    → "[English translation]"
+
+- **Formal context:**
+  - **[Japanese sentence]**
+    *([ふりがな], [romaji])*
+    → "[English translation]"`;
+
+  // Add common compounds if word contains kanji
+  if (containsKanji) {
+    basePrompt += `
+
+### Common Compounds
+- **[Compound 1]** ([reading]) - "[meaning]"
+- **[Compound 2]** ([reading]) - "[meaning]"
+- **[Compound 3]** ([reading]) - "[meaning]"`;
+  }
+
+  // Add similar words comparison
+  basePrompt += `
+
+### Similar Words Comparison
+**[Similar Word 1]**
+- Reading: [reading]
+- Meaning: [core meaning]
+- Usage: [when/how used]
+- Nuance: [specific connotation]
+
+**[Similar Word 2]**
+- Reading: [reading]
+- Meaning: [core meaning]
+- Usage: [when/how used]
+- Nuance: [specific connotation]
+
+### Usage Summary
+- **Standard usage:** [typical context]
+- **Special considerations:** [politeness level, gender associations]
+- **Common collocations:** [words/phrases often used with it]`;
+
+  // Add mnemonic if word contains kanji
+  if (containsKanji) {
+    basePrompt += `
+- **Mnemonic:** [memorable image/story to help remember the kanji]`;
+  }
+
+  return basePrompt;
+};
+
+const SPEECH_INSTRUCTIONS =
+  'Read the following Japanese text slowly, clearly, and with a calm, nurturing tone—like a patient teacher explaining to beginners. Enunciate each word with care. Maintain a gentle rhythm, avoid rushing, and sound composed and warm.';
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -121,6 +173,17 @@ const dictSchema = z.object({
   ),
 });
 
+function findKanji(text: string): string[] {
+  return Array.from(
+    new Set(
+      Array.from(text).filter((char) => {
+        const code = char.charCodeAt(0);
+        return code >= 0x4e00 && code <= 0x9faf;
+      })
+    )
+  );
+}
+
 app.get('/ask/open', async (c) => {
   const prompt = c.req.query('prompt');
 
@@ -147,17 +210,33 @@ app.get('/ask/open', async (c) => {
   throw new HTTPException(500, { message: 'Failed to generate sentences' });
 });
 
+/*
+export enum ExplainRequestType {
+  V = "word", // aka "explain word prompt"
+  G = "grammar", // aka "sentence"
+}
+*/
+
 app.get('/explain/open', async (c) => {
   const prompt = c.req.query('prompt');
+  const type = c.req.query('type') || 'vocabulary';
 
   if (!prompt) {
     throw new HTTPException(400, { message: 'Missing prompt' });
   }
+
+  let promptTemplate;
+  if (type === 'vocabulary') {
+    promptTemplate = generateWordExplanationPrompt(prompt || '');
+  } else {
+    promptTemplate = EXPLAIN_GRAMMAR;
+  }
+
   const openai = new OpenAI({ apiKey: c.env.OPENAI_KEY });
 
   const streamResp = await openai.chat.completions.create({
     messages: [
-      { role: 'developer', content: EXPLAIN_PROMPT },
+      { role: 'developer', content: promptTemplate },
       { role: 'user', content: prompt },
     ],
     model: 'gpt-4o-mini-2024-07-18',
@@ -186,8 +265,7 @@ app.get('/explain/open', async (c) => {
 
 app.get('/sound/open', async (c) => {
   const prompt = c.req.query('prompt');
-  const voice = c.req.query('voice') || 'alloy';
-  const model = c.req.query('model') || 'tts-1';
+  const voice = (c.req.query('voice') || 'nova') as SpeechCreateParams['voice'];
 
   if (!prompt) {
     throw new HTTPException(400, { message: 'Missing prompt' });
@@ -197,9 +275,10 @@ app.get('/sound/open', async (c) => {
 
   try {
     const response = await openai.audio.speech.create({
-      model: model,
+      model: 'gpt-4o-mini-tts',
       voice: voice,
       input: prompt,
+      instructions: SPEECH_INSTRUCTIONS,
     });
 
     const audioData = await response.arrayBuffer();
