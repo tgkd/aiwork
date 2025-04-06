@@ -143,7 +143,12 @@ For each kanji in the word:
 };
 
 const SPEECH_INSTRUCTIONS =
-  'Read the following Japanese text slowly, clearly, and with a calm, nurturing tone—like a patient teacher explaining to beginners. Enunciate each word with care. Maintain a gentle rhythm, avoid rushing, and sound composed and warm.';
+  `
+Voice: Clear, authoritative, and composed, projecting confidence and professionalism.
+Tone: Neutral and informative, maintaining a balance between formality and approachability.
+Punctuation: Structured with commas and pauses for clarity, ensuring information is digestible and well-paced.
+Delivery: Steady and measured, with slight emphasis on key figures and deadlines to highlight critical points.
+  `;
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
